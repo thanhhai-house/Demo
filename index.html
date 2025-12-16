@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Thống kê phụ tùng</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-left">
+      <img class="truck" alt="truck" src="https://upload.wikimedia.org/wikipedia/commons/3/3e/Truck_icon.svg">
+      <div>
+        <div class="title">THỐNG KÊ PHỤ TÙNG</div>
+        <div class="subtitle">Kho & Cửa hàng • Nhập/Xuất • Báo giá PDF</div>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <button class="tab-btn active" data-tab="KHO">KHO</button>
+      <button class="tab-btn" data-tab="CUA_HANG">CỬA HÀNG</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="toolbar">
+      <div class="search-wrap">
+        <button class="big-btn" id="btnQuote">BÁO GIÁ</button>
+        <input id="q" class="search" placeholder="Tra theo OEM / OEM thay thế / Tên / Loại..." />
+        <button id="btnSearch" class="btn">Tra cứu</button>
+        <button id="btnRefresh" class="btn ghost">Làm mới</button>
+      </div>
+
+      <div class="actions">
+        <button id="btnOpenAdd" class="btn">+ Thêm sản phẩm</button>
+        <button id="btnOpenIn" class="btn">Nhập hàng</button>
+        <button id="btnOpenOut" class="btn danger">Xuất hàng</button>
+      </div>
+    </section>
+
+    <section class="statline">
+      <div>Đang xem: <b id="viewLoc">KHO</b></div>
+      <div class="muted">Không tra cứu: hiển thị tượng trưng dạng trượt • Có tra cứu: hiển thị ALL danh sách</div>
+    </section>
+
+    <!-- Không tra cứu => hiện -->
+    <section id="categoryRows" class="category-rows"></section>
+
+    <!-- Có tra cứu => hiện -->
+    <section class="list" id="listSection">
+      <div class="list-head">
+        <div class="muted">Kết quả tra cứu (ALL)</div>
+        <div class="pill">Đã chọn báo giá: <b id="quoteCount">0</b></div>
+      </div>
+      <div id="list" class="list-body"></div>
+    </section>
+  </main>
+
+  <!-- MODAL: Add product -->
+  <div class="modal" id="modalAdd">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-title">Thêm sản phẩm</div>
+        <button class="icon-btn" data-close="#modalAdd">✕</button>
+      </div>
+
+      <div class="grid">
+        <label>OEM <input id="p_oem"/></label>
+        <label>OEM THAY THẾ <input id="p_alt"/></label>
+        <label>TÊN <input id="p_ten"/></label>
+        <label>THƯƠNG HIỆU <input id="p_brand"/></label>
+        <label>LOẠI <input id="p_loai" placeholder="VD: Lọc nhớt"/></label>
+        <label>ĐƠN VỊ TÍNH <input id="p_dvt" placeholder="cái, lọ, bộ..."/></label>
+        <label>GIÁ <input id="p_gia" inputmode="numeric" placeholder="VD: 120000"/></label>
+        <label>GHI CHÚ <input id="p_note"/></label>
+
+        <label class="full">
+          Ảnh (Camera/Điện thoại/PC)
+          <input id="p_img" type="file" accept="image/*" capture="environment"/>
+        </label>
+
+        <div class="full img-preview-wrap">
+          <div class="muted">Xem trước ảnh:</div>
+          <img id="p_img_preview" class="img-preview" alt="preview" />
+        </div>
+
+        <div class="full muted">* OEM thay thế có thể để trống và không bắt buộc ảnh</div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn ghost" data-close="#modalAdd">Hủy</button>
+        <button id="btnSaveProduct" class="btn">Lưu sản phẩm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Movement -->
+  <div class="modal" id="modalMove">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-title" id="moveTitle">Nhập/Xuất</div>
+        <button class="icon-btn" data-close="#modalMove">✕</button>
+      </div>
+
+      <div class="grid">
+        <label>Mã sản phẩm (ID)
+          <input id="m_pid" placeholder="VD: 00001"/>
+        </label>
+        <label>Số lượng
+          <input id="m_qty" inputmode="numeric" placeholder="VD: 2"/>
+        </label>
+        <label>Giá tại thời điểm (tuỳ chọn)
+          <input id="m_price" inputmode="numeric" placeholder="Để trống = 0"/>
+        </label>
+        <label class="full">Ghi chú
+          <input id="m_note" placeholder="VD: Nhập theo hoá đơn..."/>
+        </label>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn ghost" data-close="#modalMove">Hủy</button>
+        <button id="btnDoMove" class="btn">Xác nhận</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Quote -->
+  <div class="modal" id="modalQuote">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-title">Báo giá (PDF)</div>
+        <button class="icon-btn" data-close="#modalQuote">✕</button>
+      </div>
+
+      <div class="grid">
+        <label>Khách hàng <input id="c_name" placeholder="Tên khách"/></label>
+        <label>SĐT <input id="c_phone" placeholder="Số điện thoại"/></label>
+        <label class="full">Địa chỉ <input id="c_addr" placeholder="Địa chỉ"/></label>
+      </div>
+
+      <div class="quote-items" id="quoteItems"></div>
+
+      <div class="modal-actions">
+        <button id="btnClearQuote" class="btn ghost">Xoá chọn</button>
+        <button id="btnMakePdf" class="btn">Tạo PDF báo giá</button>
+      </div>
+
+      <div class="result" id="quoteResult"></div>
+    </div>
+  </div>
+
+  <footer class="app-footer">
+    <div class="footer-badge">@2025 hải võ</div>
+  </footer>
+
+  <script src="./app.js"></script>
+</body>
+</html>
