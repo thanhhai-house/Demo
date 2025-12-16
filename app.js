@@ -1,19 +1,15 @@
 /************ YOU MUST SET THIS ************/
-const API_URL = "https://script.google.com/macros/s/AKfycbzs-QjVvfzggUMVGbfr5qizvaI5bO8iqVyklNwHkF0YJeoPFKaSav7HRdPXOKqu1cgm/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbw8BYyOsdn64Z4qsIIa9L3vNc7wBqIWwmFM8-hgg_oikz_pmDRCuGLVCjbiItE5RRn_/exec";
 /*******************************************/
 
-// token nhập trên app
-function getToken() { return (localStorage.getItem("PHU_TUNG_TOKEN") || "").trim(); }
+function getToken(){ return (localStorage.getItem("PHU_TUNG_TOKEN") || "").trim(); }
 
-const UI = {
-  MAX_CATEGORIES: 10,
-  MAX_ITEMS_PER_CATEGORY: 20
-};
+const UI = { MAX_CATEGORIES: 10, MAX_ITEMS_PER_CATEGORY: 20 };
 
-let currentLocView = "KHO"; // chỉ để VIEW (tab), còn Nhập/Xuất có chọn riêng
+let currentLocView = "KHO";
 let allProducts = [];
-let stockMap = {}; // product_id -> {KHO_TON, CUA_HANG_TON}
-let quoteCart = new Map(); // product_id -> {qty, price}
+let stockMap = {};
+let quoteCart = new Map();
 let moveType = "IN";
 
 /************ JSONP ************/
@@ -22,12 +18,7 @@ function jsonp(action, params = {}) {
     const cb = "cb_" + Math.random().toString(16).slice(2);
     const script = document.createElement("script");
 
-    const q = new URLSearchParams({
-      action,
-      token: getToken(),
-      callback: cb,
-      ...params
-    });
+    const q = new URLSearchParams({ action, token: getToken(), callback: cb, ...params });
 
     window[cb] = (resp) => {
       delete window[cb];
@@ -49,22 +40,82 @@ function jsonp(action, params = {}) {
 
 function el(sel){ return document.querySelector(sel); }
 function els(sel){ return Array.from(document.querySelectorAll(sel)); }
-
 function money(n){ return Number(n||0).toLocaleString("vi-VN"); }
 function openModal(id){ el(id).classList.add("show"); }
 function closeModal(id){ el(id).classList.remove("show"); }
 function show(elem, yes){ if(elem) elem.style.display = yes ? "" : "none"; }
+function escapeHtml(s){
+  s = String(s ?? "");
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
+/************ UI FEEDBACK ************/
+function flashBtn(btn, mode="ok"){
+  if(!btn) return;
+  btn.classList.add("flash");
+  if(mode==="err") btn.classList.add("shake");
+  setTimeout(()=>{ btn.classList.remove("flash"); btn.classList.remove("shake"); }, 250);
+}
+function toast(type, message, detail=""){
+  const wrap = document.querySelector("#toastWrap");
+  if(!wrap) return;
+  const t = document.createElement("div");
+  t.className = `toast ${type} in`;
+  t.innerHTML = `
+    <div class="dot"></div>
+    <div>
+      <div class="msg">${escapeHtml(message)}</div>
+      ${detail ? `<div class="sub">${escapeHtml(detail)}</div>` : ``}
+    </div>
+  `;
+  wrap.appendChild(t);
+  setTimeout(()=>{
+    t.classList.remove("in");
+    t.classList.add("out");
+    setTimeout(()=>t.remove(), 200);
+  }, 2400);
+}
+function setBusy(button, busy, labelBusy="Đang xử lý..."){
+  if(!button) return;
+  if(busy){
+    button.dataset._oldText = button.textContent;
+    button.textContent = labelBusy;
+    button.disabled = true;
+    button.style.opacity = "0.75";
+  }else{
+    button.textContent = button.dataset._oldText || button.textContent;
+    button.disabled = false;
+    button.style.opacity = "";
+  }
+}
+
+/************ OPTIMISTIC UPDATES ************/
+function updateLocalStockByDelta(productId, location, delta){
+  const pid = String(productId);
+  if(!stockMap[pid]) stockMap[pid] = { PRODUCT_ID: pid, KHO_TON: 0, CUA_HANG_TON: 0 };
+  if(location === "KHO") stockMap[pid].KHO_TON = Number(stockMap[pid].KHO_TON||0) + delta;
+  if(location === "CUA_HANG") stockMap[pid].CUA_HANG_TON = Number(stockMap[pid].CUA_HANG_TON||0) + delta;
+}
+function updateLocalPriceByOEM(oem, newPrice){
+  const target = String(oem||"").trim();
+  allProducts.forEach(p=>{
+    if(String(p.OEM||"").trim() === target) p.GIA = Number(newPrice||0);
+  });
+}
+
+/************ INIT ************/
 document.addEventListener("click", (e) => {
   const c = e.target.getAttribute("data-close");
   if (c) closeModal(c);
+
+  const b = e.target.closest(".btn, .big-btn, .tab-btn, .icon-btn");
+  if(b) flashBtn(b);
 });
 
-// Header image fallback
+// header image fallback
 const headerTruck = document.querySelector("#headerTruck");
 headerTruck?.addEventListener("error", ()=> headerTruck.classList.add("hide"));
 
-/************ TABS (chỉ đổi VIEW) ************/
 els(".tab-btn[data-tab]").forEach(btn => {
   btn.addEventListener("click", async () => {
     els(".tab-btn[data-tab]").forEach(b => b.classList.remove("active"));
@@ -72,15 +123,13 @@ els(".tab-btn[data-tab]").forEach(btn => {
     currentLocView = btn.dataset.tab;
     el("#viewLoc").textContent = currentLocView;
 
-    // set default location in movement modal theo tab đang xem
     const locSel = el("#m_location");
     if(locSel) locSel.value = currentLocView;
 
-    await refreshAll();
+    await refreshAll(true);
   });
 });
 
-el("#btnRefresh").addEventListener("click", refreshAll);
 el("#btnSearch").addEventListener("click", doSearch);
 el("#q").addEventListener("keydown", (e)=>{ if(e.key==="Enter") doSearch(); });
 
@@ -96,23 +145,44 @@ el("#btnClearQuote").addEventListener("click", ()=>{
   quoteCart.clear();
   updateQuoteCount();
   renderQuoteModal();
+  toast("info","Đã xoá chọn báo giá");
 });
 el("#btnMakePdf").addEventListener("click", makePdfQuote);
 
-/************ TOKEN MODAL ************/
+// refresh button with toast
+el("#btnRefresh").addEventListener("click", async ()=>{
+  const btn = el("#btnRefresh");
+  setBusy(btn,true,"Đang tải...");
+  try{
+    await refreshAll(true);
+    toast("ok","Đã tải dữ liệu","Kho/Cửa hàng đã cập nhật.");
+  }catch(e){
+    flashBtn(btn,"err");
+    toast("err","Lỗi tải dữ liệu", String(e));
+  }finally{
+    setBusy(btn,false);
+  }
+});
+
+// token modal
 el("#btnToken").addEventListener("click", ()=>{
   el("#app_token").value = getToken();
   openModal("#modalToken");
 });
 el("#btnSaveToken").addEventListener("click", ()=>{
+  const btn = el("#btnSaveToken");
   const t = el("#app_token").value.trim();
-  if(!t) return alert("Token trống!");
+  if(!t){
+    flashBtn(btn,"err");
+    toast("err","TOKEN trống","Vui lòng dán token rồi lưu.");
+    return;
+  }
   localStorage.setItem("PHU_TUNG_TOKEN", t);
   closeModal("#modalToken");
-  alert("Đã lưu token. Bấm 'Làm mới' để tải dữ liệu.");
+  toast("ok","Đã lưu TOKEN","Bấm 'Làm mới' để tải dữ liệu.");
 });
 
-/************ IMAGE PREVIEW ************/
+// image preview
 const imgInput = document.querySelector("#p_img");
 const imgPreview = document.querySelector("#p_img_preview");
 imgInput?.addEventListener("change", async () => {
@@ -127,25 +197,27 @@ imgInput?.addEventListener("change", async () => {
 (async function boot(){
   if(!getToken()){
     openModal("#modalToken");
+    toast("info","Nhập TOKEN để dùng app");
     return;
   }
   try{
     await jsonp("ping");
-    // set default movement location to current view
-    const locSel = el("#m_location");
-    if(locSel) locSel.value = currentLocView;
-    await refreshAll();
+    el("#m_location").value = currentLocView;
+    await refreshAll(true);
+    toast("ok","Kết nối thành công");
   }catch(err){
-    alert("Không kết nối được API hoặc TOKEN sai.\n" + err);
+    toast("err","Không kết nối được API / TOKEN sai", String(err));
   }
 })();
 
-/************ LOAD ************/
-async function refreshAll(){
-  const [products, stock] = await Promise.all([
-    jsonp("getProducts"),
-    jsonp("getStock")
-  ]);
+/************ DATA LOAD ************/
+async function refreshAll(hardReload=false){
+  // hardReload=true: tải lại từ server (chậm hơn nhưng đồng bộ)
+  if(!hardReload){
+    // không dùng nữa, nhưng để sau này mở rộng
+    return;
+  }
+  const [products, stock] = await Promise.all([ jsonp("getProducts"), jsonp("getStock") ]);
   allProducts = products || [];
   stockMap = {};
   (stock||[]).forEach(s => stockMap[String(s.PRODUCT_ID)] = s);
@@ -161,7 +233,7 @@ function getTon(productId){
   return currentLocView === "KHO" ? Number(s.KHO_TON||0) : Number(s.CUA_HANG_TON||0);
 }
 
-/************ RENDER MODE ************/
+/************ RENDER ************/
 function renderDefault(){
   show(el("#categoryRows"), true);
   show(el("#listSection"), false);
@@ -246,7 +318,6 @@ function productCard(p){
   card.addEventListener("click", ()=>{
     if(quoteCart.has(pid)) quoteCart.delete(pid);
     else quoteCart.set(pid, { qty: 1, price: Number(p.GIA||0) });
-
     updateQuoteCount();
 
     const q = el("#q").value.trim();
@@ -257,9 +328,7 @@ function productCard(p){
   return card;
 }
 
-function updateQuoteCount(){
-  el("#quoteCount").textContent = String(quoteCart.size);
-}
+function updateQuoteCount(){ el("#quoteCount").textContent = String(quoteCart.size); }
 
 /************ SEARCH ************/
 function filterLocal(q){
@@ -272,7 +341,6 @@ function filterLocal(q){
     return oem.includes(q) || alt.includes(q) || ten.includes(q) || loai.includes(q);
   });
 }
-
 function doSearch(){
   const q = el("#q").value.trim();
   if(!q){ renderDefault(); return; }
@@ -281,6 +349,9 @@ function doSearch(){
 
 /************ ADD PRODUCT ************/
 async function saveProduct(){
+  const btn = el("#btnSaveProduct");
+  setBusy(btn,true,"Đang lưu...");
+
   const oem = el("#p_oem").value.trim();
   const alt = el("#p_alt").value.trim();
   const ten = el("#p_ten").value.trim();
@@ -289,30 +360,63 @@ async function saveProduct(){
   const dvt = el("#p_dvt").value.trim();
   const gia = el("#p_gia").value.trim();
   const note = el("#p_note").value.trim();
+  const initKho = el("#p_init_kho").value.trim();
+  const initStore = el("#p_init_store").value.trim();
   const file = el("#p_img").files[0];
 
-  if(!oem || !ten) return alert("Thiếu OEM hoặc TÊN");
-
-  const created = await jsonp("createProduct", {
-    oem, oem_thay_the: alt, ten, thuong_hieu: brand,
-    loai, don_vi_tinh: dvt, gia, ghi_chu: note, image_url: ""
-  });
-
-  const productId = created.id;
-
-  if(file){
-    const dataUrl = await fileToDataURL(file);
-    await jsonp("uploadImage", { product_id: productId, data_url: dataUrl });
+  if(!oem || !ten){
+    setBusy(btn,false);
+    flashBtn(btn,"err");
+    toast("err","Thiếu OEM hoặc TÊN");
+    return;
   }
 
-  closeModal("#modalAdd");
-  clearAddForm();
-  await refreshAll();
-  alert("Đã lưu sản phẩm ID: " + productId);
+  try{
+    const created = await jsonp("createProduct", {
+      oem, oem_thay_the: alt, ten, thuong_hieu: brand,
+      loai, don_vi_tinh: dvt, gia, ghi_chu: note, image_url: "",
+      init_kho: initKho, init_store: initStore
+    });
+
+    // optimistic add
+    const newObj = {
+      ID: created.id, OEM:oem, OEM_THAY_THE:alt, TEN:ten,
+      THUONG_HIEU:brand, LOAI:loai, DON_VI_TINH:dvt,
+      GIA: Number(String(gia||"0").replace(/,/g,'')) || 0,
+      GHI_CHU:note, IMAGE_URL:""
+    };
+    allProducts.unshift(newObj);
+    stockMap[String(created.id)] = {
+      PRODUCT_ID: String(created.id),
+      KHO_TON: Number(initKho||0),
+      CUA_HANG_TON: Number(initStore||0)
+    };
+
+    if(file){
+      const dataUrl = await fileToDataURL(file);
+      const up = await jsonp("uploadImage", { product_id: created.id, data_url: dataUrl });
+      newObj.IMAGE_URL = up.image_url;
+    }
+
+    closeModal("#modalAdd");
+    clearAddForm();
+
+    const q = el("#q").value.trim();
+    if(q) renderSearchResult(filterLocal(q));
+    else renderDefault();
+
+    toast("ok","Đã thêm sản phẩm thành công", `ID ${created.id} • OEM ${oem}`);
+  }catch(e){
+    flashBtn(btn,"err");
+    toast("err","Thêm sản phẩm thất bại", String(e));
+  }finally{
+    setBusy(btn,false);
+  }
 }
 
 function clearAddForm(){
-  ["#p_oem","#p_alt","#p_ten","#p_brand","#p_loai","#p_dvt","#p_gia","#p_note"].forEach(id=>el(id).value="");
+  ["#p_oem","#p_alt","#p_ten","#p_brand","#p_loai","#p_dvt","#p_gia","#p_note","#p_init_kho","#p_init_store"]
+    .forEach(id=>el(id).value="");
   el("#p_img").value = "";
   if(imgPreview){ imgPreview.src=""; imgPreview.style.display="none"; }
 }
@@ -334,45 +438,56 @@ function openMove(type){
   el("#m_qty").value = "";
   el("#m_new_price").value = "";
   el("#m_note").value = "";
-
-  // default location = current view
   el("#m_location").value = currentLocView;
-
-  // giá chỉ hiện khi nhập
   show(el("#priceWrap"), type === "IN");
-
   openModal("#modalMove");
 }
 
 async function doMove(){
+  const btn = el("#btnDoMove");
+  setBusy(btn,true,"Đang ghi...");
+
   const location = el("#m_location").value.trim();
   const oem = el("#m_oem").value.trim();
   const qty = el("#m_qty").value.trim();
   const newPrice = el("#m_new_price").value.trim();
   const note = el("#m_note").value.trim();
 
-  if(!oem || !qty) return alert("Thiếu OEM hoặc số lượng");
+  if(!oem || !qty){
+    setBusy(btn,false);
+    flashBtn(btn,"err");
+    toast("err","Thiếu dữ liệu","Vui lòng nhập OEM và Số lượng.");
+    return;
+  }
 
   try{
     const resp = await jsonp("createMovementByOEM", {
-      location,
-      type: moveType,
-      oem,
-      qty,
-      new_price: (moveType==="IN" ? newPrice : ""), // OUT thì bỏ qua
+      location, type: moveType, oem, qty,
+      new_price: (moveType==="IN" ? newPrice : ""),
       note
     });
 
+    // optimistic update
+    const delta = (moveType === "IN" ? Number(qty) : -Number(qty));
+    updateLocalStockByDelta(resp.product_id, location, delta);
+    if(resp.updated_price != null) updateLocalPriceByOEM(resp.oem, resp.updated_price);
+
     closeModal("#modalMove");
-    await refreshAll();
+
+    const q = el("#q").value.trim();
+    if(q) renderSearchResult(filterLocal(q));
+    else renderDefault();
 
     if(resp.updated_price != null){
-      alert(`OK: ${resp.ref_no}\nĐã cập nhật GIÁ mới OEM=${resp.oem}: ${money(resp.updated_price)}đ`);
+      toast("ok","Nhập hàng thành công", `OEM ${resp.oem} • SL ${qty} • Giá mới ${money(resp.updated_price)}đ`);
     }else{
-      alert(`OK: ${resp.ref_no}`);
+      toast("ok", (moveType==="IN" ? "Nhập hàng thành công" : "Xuất hàng thành công"), `OEM ${resp.oem} • SL ${qty}`);
     }
   }catch(e){
-    alert("Lỗi nhập/xuất: " + e);
+    flashBtn(btn,"err");
+    toast("err","Nhập/Xuất thất bại", String(e));
+  }finally{
+    setBusy(btn,false);
   }
 }
 
@@ -410,6 +525,7 @@ function renderQuoteModal(){
       quoteCart.delete(btn.dataset.remove);
       updateQuoteCount();
       renderQuoteModal();
+      toast("info","Đã xoá 1 sản phẩm khỏi báo giá");
     });
   });
 
@@ -437,30 +553,40 @@ function renderQuoteModal(){
 }
 
 async function makePdfQuote(){
-  if(quoteCart.size === 0) return alert("Chưa chọn sản phẩm");
+  const btn = el("#btnMakePdf");
+  setBusy(btn,true,"Đang tạo PDF...");
 
-  const customer = el("#c_name").value.trim();
-  const phone = el("#c_phone").value.trim();
-  const address = el("#c_addr").value.trim();
-
-  const items = [];
-  for(const [pid, it] of quoteCart.entries()){
-    items.push({ product_id: pid, qty: it.qty, price: it.price });
+  if(quoteCart.size === 0){
+    setBusy(btn,false);
+    flashBtn(btn,"err");
+    toast("err","Chưa chọn sản phẩm","Bấm vào sản phẩm để thêm vào báo giá.");
+    return;
   }
 
-  const resp = await jsonp("createQuotePdf", {
-    customer, phone, address,
-    items_json: JSON.stringify(items)
-  });
+  try{
+    const customer = el("#c_name").value.trim();
+    const phone = el("#c_phone").value.trim();
+    const address = el("#c_addr").value.trim();
 
-  el("#quoteResult").innerHTML = `
-    <div>Đã tạo: <b>${resp.quote_no}</b> • Tổng: <b>${money(resp.total)}đ</b></div>
-    <div><a href="${resp.pdf_url}" target="_blank" rel="noopener">Mở PDF / In báo giá</a></div>
-  `;
-}
+    const items = [];
+    for(const [pid, it] of quoteCart.entries()){
+      items.push({ product_id: pid, qty: it.qty, price: it.price });
+    }
 
-/************ UTIL ************/
-function escapeHtml(s){
-  s = String(s ?? "");
-  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const resp = await jsonp("createQuotePdf", {
+      customer, phone, address,
+      items_json: JSON.stringify(items)
+    });
+
+    el("#quoteResult").innerHTML = `
+      <div>Đã tạo: <b>${resp.quote_no}</b> • Tổng: <b>${money(resp.total)}đ</b></div>
+      <div><a href="${resp.pdf_url}" target="_blank" rel="noopener">Mở PDF / In báo giá</a></div>
+    `;
+    toast("ok","Tạo báo giá thành công", `Mã ${resp.quote_no} • Tổng ${money(resp.total)}đ`);
+  }catch(e){
+    flashBtn(btn,"err");
+    toast("err","Tạo báo giá thất bại", String(e));
+  }finally{
+    setBusy(btn,false);
+  }
 }
