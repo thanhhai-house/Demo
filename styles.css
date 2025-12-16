@@ -3,14 +3,14 @@
   --muted:rgba(0,0,0,.55);
   --btn:#1b3a67;
   --danger:#a33a3a;
-  --badge:#f3f2d7; /* xanh ngà */
+  --badge:#f3f2d7;
   --text:#102018;
 }
 
 *{box-sizing:border-box}
 body{
   margin:0;
-  background:#f3f2d7; /* nền xanh ngà */
+  background:#f3f2d7;
   color:var(--text);
   font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
 }
@@ -25,7 +25,11 @@ a{color:inherit}
   backdrop-filter: blur(10px);
 }
 .header-left{display:flex;align-items:center;gap:12px}
-.truck{width:84px;height:48px;object-fit:contain;border-radius:10px;background:rgba(255,255,255,.55);border:1px solid var(--line)}
+.truck{
+  width:110px;height:48px;object-fit:contain;
+  border-radius:12px;background:rgba(255,255,255,.55);
+  border:1px solid var(--line)
+}
 .truck.hide{display:none}
 .title{font-weight:900;letter-spacing:.5px}
 .subtitle{font-size:12px;color:var(--muted)}
@@ -50,7 +54,6 @@ a{color:inherit}
   background:linear-gradient(90deg,#2b6cb0,#225ea8);
   color:#fff;font-weight:900;cursor:pointer;min-width:120px
 }
-
 .btn{
   padding:10px 12px;border-radius:14px;border:1px solid var(--line);
   background:var(--btn);color:#fff;font-weight:800;cursor:pointer
@@ -91,7 +94,7 @@ a{color:inherit}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;padding:14px;z-index:50}
 .modal.show{display:flex}
 .modal-card{
-  width:min(820px,96vw);
+  width:min(880px,96vw);
   border:1px solid var(--line);
   background:rgba(255,255,255,.92);
   border-radius:22px;padding:14px;
@@ -122,7 +125,6 @@ a{color:inherit}
 .quote-row input{width:90px}
 .result{margin-top:10px;color:var(--muted);font-size:12px}
 
-/* IMAGE PREVIEW */
 .img-preview-wrap{display:flex;flex-direction:column;gap:8px;margin-top:4px}
 .img-preview{
   width:100%;
@@ -138,21 +140,46 @@ a{color:inherit}
 .app-footer{padding:14px 10px; overflow:hidden}
 .marquee{width:100%; overflow:hidden}
 .marquee__inner{
-  display:flex;
-  gap:20px;
-  white-space:nowrap;
+  display:flex;gap:20px;white-space:nowrap;
   will-change:transform;
   animation: marquee 14s linear infinite;
 }
-@keyframes marquee{
-  from{transform:translateX(0)}
-  to{transform:translateX(-50%)}
-}
+@keyframes marquee{ from{transform:translateX(0)} to{transform:translateX(-50%)} }
 .footer-badge{
-  background:#f3f2d7;
-  color:#1b1b1b;
-  padding:10px 18px;
-  border-radius:999px;
-  border:2px solid rgba(0,0,0,.15);
-  font-weight:900
+  background:#f3f2d7;color:#1b1b1b;
+  padding:10px 18px;border-radius:999px;
+  border:2px solid rgba(0,0,0,.15);font-weight:900
 }
+
+/* BUTTON FEEDBACK */
+.btn, .big-btn, .tab-btn, .icon-btn{ transition: transform .08s ease, filter .15s ease, box-shadow .15s ease; }
+.btn:active, .big-btn:active, .tab-btn:active, .icon-btn:active{ transform: scale(0.98); filter: brightness(1.05); }
+.btn.flash, .big-btn.flash, .tab-btn.flash, .icon-btn.flash{ box-shadow: 0 0 0 3px rgba(35,110,180,.25); }
+@keyframes shake {0%{transform:translateX(0)}25%{transform:translateX(-2px)}50%{transform:translateX(2px)}75%{transform:translateX(-2px)}100%{transform:translateX(0)}}
+.btn.shake, .big-btn.shake, .tab-btn.shake, .icon-btn.shake{ animation: shake .18s linear 1; }
+
+/* TOAST */
+.toast-wrap{
+  position:fixed; right:14px; bottom:18px;
+  display:flex; flex-direction:column; gap:10px;
+  z-index:9999; pointer-events:none;
+}
+.toast{
+  min-width:260px; max-width:min(92vw, 420px);
+  padding:12px 14px; border-radius:16px;
+  border:1px solid rgba(0,0,0,.15);
+  background:rgba(255,255,255,.92);
+  color:#102018;
+  box-shadow:0 12px 30px rgba(0,0,0,.18);
+  display:flex; gap:10px; align-items:flex-start;
+}
+.toast .dot{width:10px;height:10px;border-radius:999px;margin-top:4px;}
+.toast .msg{font-weight:800}
+.toast .sub{font-size:12px;opacity:.75;margin-top:2px}
+.toast.ok .dot{background:#22c55e}
+.toast.err .dot{background:#ef4444}
+.toast.info .dot{background:#3b82f6}
+@keyframes toastIn{ from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+@keyframes toastOut{ from{opacity:1;transform:translateY(0)} to{opacity:0;transform:translateY(8px)} }
+.toast.in{animation:toastIn .16s ease-out}
+.toast.out{animation:toastOut .18s ease-in}
