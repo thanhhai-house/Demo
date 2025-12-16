@@ -1,7 +1,6 @@
 /************ YOU MUST SET THIS ************/
-const API_URL = "https://script.google.com/macros/s/AKfycbw8BYyOsdn64Z4qsIIa9L3vNc7wBqIWwmFM8-hgg_oikz_pmDRCuGLVCjbiItE5RRn_/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbzkS1lTh0oaRGrISDmqAcSdjm2rhV9T0SSSjRVH-vsUqbA5gSYFXGgeDkWDeVlEkWKk/exec";
 /*******************************************/
-
 function getToken(){ return (localStorage.getItem("PHU_TUNG_TOKEN") || "").trim(); }
 
 const UI = { MAX_CATEGORIES: 10, MAX_ITEMS_PER_CATEGORY: 20 };
@@ -12,12 +11,14 @@ let stockMap = {};
 let quoteCart = new Map();
 let moveType = "IN";
 
+let currentDetailId = null;
+let detailEditMode = false;
+
 /************ JSONP ************/
 function jsonp(action, params = {}) {
   return new Promise((resolve, reject) => {
     const cb = "cb_" + Math.random().toString(16).slice(2);
     const script = document.createElement("script");
-
     const q = new URLSearchParams({ action, token: getToken(), callback: cb, ...params });
 
     window[cb] = (resp) => {
@@ -26,18 +27,14 @@ function jsonp(action, params = {}) {
       if (!resp || resp.ok !== true) return reject(resp?.error || "API_ERROR");
       resolve(resp.data);
     };
-
-    script.onerror = () => {
-      delete window[cb];
-      script.remove();
-      reject("NETWORK_ERROR");
-    };
+    script.onerror = () => { delete window[cb]; script.remove(); reject("NETWORK_ERROR"); };
 
     script.src = `${API_URL}?${q.toString()}`;
     document.body.appendChild(script);
   });
 }
 
+/************ DOM ************/
 function el(sel){ return document.querySelector(sel); }
 function els(sel){ return Array.from(document.querySelectorAll(sel)); }
 function money(n){ return Number(n||0).toLocaleString("vi-VN"); }
@@ -103,7 +100,7 @@ function updateLocalPriceByOEM(oem, newPrice){
   });
 }
 
-/************ INIT ************/
+/************ EVENTS ************/
 document.addEventListener("click", (e) => {
   const c = e.target.getAttribute("data-close");
   if (c) closeModal(c);
@@ -116,6 +113,7 @@ document.addEventListener("click", (e) => {
 const headerTruck = document.querySelector("#headerTruck");
 headerTruck?.addEventListener("error", ()=> headerTruck.classList.add("hide"));
 
+// tabs
 els(".tab-btn[data-tab]").forEach(btn => {
   btn.addEventListener("click", async () => {
     els(".tab-btn[data-tab]").forEach(b => b.classList.remove("active"));
@@ -130,26 +128,17 @@ els(".tab-btn[data-tab]").forEach(btn => {
   });
 });
 
+// search
 el("#btnSearch").addEventListener("click", doSearch);
 el("#q").addEventListener("keydown", (e)=>{ if(e.key==="Enter") doSearch(); });
 
+// main buttons
 el("#btnOpenAdd").addEventListener("click", ()=>openModal("#modalAdd"));
 el("#btnOpenIn").addEventListener("click", ()=>openMove("IN"));
 el("#btnOpenOut").addEventListener("click", ()=>openMove("OUT"));
 el("#btnQuote").addEventListener("click", ()=>{ renderQuoteModal(); openModal("#modalQuote"); });
 
-el("#btnSaveProduct").addEventListener("click", saveProduct);
-el("#btnDoMove").addEventListener("click", doMove);
-
-el("#btnClearQuote").addEventListener("click", ()=>{
-  quoteCart.clear();
-  updateQuoteCount();
-  renderQuoteModal();
-  toast("info","Đã xoá chọn báo giá");
-});
-el("#btnMakePdf").addEventListener("click", makePdfQuote);
-
-// refresh button with toast
+// refresh
 el("#btnRefresh").addEventListener("click", async ()=>{
   const btn = el("#btnRefresh");
   setBusy(btn,true,"Đang tải...");
@@ -182,7 +171,22 @@ el("#btnSaveToken").addEventListener("click", ()=>{
   toast("ok","Đã lưu TOKEN","Bấm 'Làm mới' để tải dữ liệu.");
 });
 
-// image preview
+// add product
+el("#btnSaveProduct").addEventListener("click", saveProduct);
+
+// movement
+el("#btnDoMove").addEventListener("click", doMove);
+
+// quote
+el("#btnClearQuote").addEventListener("click", ()=>{
+  quoteCart.clear();
+  updateQuoteCount();
+  renderQuoteModal();
+  toast("info","Đã xoá chọn báo giá");
+});
+el("#btnMakePdf").addEventListener("click", makePdfQuote);
+
+// image preview (add)
 const imgInput = document.querySelector("#p_img");
 const imgPreview = document.querySelector("#p_img_preview");
 imgInput?.addEventListener("change", async () => {
@@ -212,11 +216,7 @@ imgInput?.addEventListener("change", async () => {
 
 /************ DATA LOAD ************/
 async function refreshAll(hardReload=false){
-  // hardReload=true: tải lại từ server (chậm hơn nhưng đồng bộ)
-  if(!hardReload){
-    // không dùng nữa, nhưng để sau này mở rộng
-    return;
-  }
+  if(!hardReload) return;
   const [products, stock] = await Promise.all([ jsonp("getProducts"), jsonp("getStock") ]);
   allProducts = products || [];
   stockMap = {};
@@ -231,6 +231,10 @@ function getTon(productId){
   const s = stockMap[String(productId)];
   if(!s) return 0;
   return currentLocView === "KHO" ? Number(s.KHO_TON||0) : Number(s.CUA_HANG_TON||0);
+}
+function stockBoth(pid){
+  const s = stockMap[String(pid)] || {};
+  return { kho: Number(s.KHO_TON||0), store: Number(s.CUA_HANG_TON||0) };
 }
 
 /************ RENDER ************/
@@ -292,12 +296,11 @@ function renderListAll(list){
 
 function productCard(p){
   const pid = String(p.ID);
-  const chosen = quoteCart.has(pid);
   const img = p.IMAGE_URL ? p.IMAGE_URL : "";
   const ton = getTon(pid);
 
   const card = document.createElement("div");
-  card.className = "prod-card" + (chosen ? " selected" : "");
+  card.className = "prod-card";
 
   card.innerHTML = `
     <div class="prod-top">
@@ -312,23 +315,32 @@ function productCard(p){
       <div>Loại: <b>${escapeHtml(p.LOAI || "-")}</b></div>
       <div>Tồn(${currentLocView}): <b>${ton}</b></div>
       <div>Giá: <b>${money(p.GIA)}đ</b></div>
+      <button class="btn ghost" data-addbg="1" style="padding:6px 10px;border-radius:12px">+BG</button>
     </div>
   `;
 
-  card.addEventListener("click", ()=>{
-    if(quoteCart.has(pid)) quoteCart.delete(pid);
-    else quoteCart.set(pid, { qty: 1, price: Number(p.GIA||0) });
-    updateQuoteCount();
-
-    const q = el("#q").value.trim();
-    if(q) renderSearchResult(filterLocal(q));
-    else renderDefault();
+  card.addEventListener("click", (e)=>{
+    if(e.target?.closest("[data-addbg]")){
+      toggleQuote(pid);
+      e.stopPropagation();
+      return;
+    }
+    openDetail(pid);
   });
 
   return card;
 }
 
 function updateQuoteCount(){ el("#quoteCount").textContent = String(quoteCart.size); }
+
+function toggleQuote(pid){
+  const p = allProducts.find(x=>String(x.ID)===String(pid));
+  if(!p) return;
+  if(quoteCart.has(String(pid))) quoteCart.delete(String(pid));
+  else quoteCart.set(String(pid), { qty: 1, price: Number(p.GIA||0) });
+  updateQuoteCount();
+  toast("ok","Đã cập nhật báo giá", `Số SP: ${quoteCart.size}`);
+}
 
 /************ SEARCH ************/
 function filterLocal(q){
@@ -378,7 +390,6 @@ async function saveProduct(){
       init_kho: initKho, init_store: initStore
     });
 
-    // optimistic add
     const newObj = {
       ID: created.id, OEM:oem, OEM_THAY_THE:alt, TEN:ten,
       THUONG_HIEU:brand, LOAI:loai, DON_VI_TINH:dvt,
@@ -430,7 +441,7 @@ function fileToDataURL(file){
   });
 }
 
-/************ MOVEMENT (OEM) ************/
+/************ MOVEMENT ************/
 function openMove(type){
   moveType = type;
   el("#moveTitle").textContent = (type==="IN" ? "Nhập hàng (theo OEM)" : "Xuất hàng (theo OEM)");
@@ -467,7 +478,6 @@ async function doMove(){
       note
     });
 
-    // optimistic update
     const delta = (moveType === "IN" ? Number(qty) : -Number(qty));
     updateLocalStockByDelta(resp.product_id, location, delta);
     if(resp.updated_price != null) updateLocalPriceByOEM(resp.oem, resp.updated_price);
@@ -497,7 +507,7 @@ function renderQuoteModal(){
   box.innerHTML = "";
 
   if(quoteCart.size === 0){
-    box.innerHTML = `<div class="muted">Chưa chọn sản phẩm. Bấm vào sản phẩm để thêm vào báo giá.</div>`;
+    box.innerHTML = `<div class="muted">Chưa chọn sản phẩm. Bấm +BG để thêm.</div>`;
     el("#quoteResult").innerHTML = "";
     return;
   }
@@ -559,7 +569,7 @@ async function makePdfQuote(){
   if(quoteCart.size === 0){
     setBusy(btn,false);
     flashBtn(btn,"err");
-    toast("err","Chưa chọn sản phẩm","Bấm vào sản phẩm để thêm vào báo giá.");
+    toast("err","Chưa chọn sản phẩm");
     return;
   }
 
@@ -590,3 +600,74 @@ async function makePdfQuote(){
     setBusy(btn,false);
   }
 }
+
+/************ DETAIL + EDIT + REPLACEMENTS ************/
+function openDetail(pid){
+  const p = allProducts.find(x=>String(x.ID)===String(pid));
+  if(!p){ toast("err","Không tìm thấy sản phẩm"); return; }
+
+  currentDetailId = String(pid);
+  detailEditMode = false;
+
+  el("#d_id").textContent = p.ID;
+  el("#d_oem").textContent = p.OEM || "";
+  el("#d_alt").textContent = p.OEM_THAY_THE || "-";
+  el("#d_ten").textContent = p.TEN || "";
+  el("#d_loai").textContent = p.LOAI || "-";
+  el("#d_brand").textContent = p.THUONG_HIEU || "-";
+  el("#d_dvt").textContent = p.DON_VI_TINH || "-";
+  el("#d_gia").textContent = money(p.GIA) + "đ";
+
+  const st = stockBoth(pid);
+  el("#d_ton_kho").textContent = st.kho;
+  el("#d_ton_store").textContent = st.store;
+
+  const img = p.IMAGE_URL || "";
+  el("#d_img").src = img || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Crect width='200' height='200' fill='rgba(0,0,0,0.06)'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' fill='rgba(0,0,0,0.45)' font-size='14'%3Eno%20image%3C/text%3E%3C/svg%3E";
+
+  el("#e_oem").value = p.OEM || "";
+  el("#e_alt").value = p.OEM_THAY_THE || "";
+  el("#e_ten").value = p.TEN || "";
+  el("#e_brand").value = p.THUONG_HIEU || "";
+  el("#e_loai").value = p.LOAI || "";
+  el("#e_dvt").value = p.DON_VI_TINH || "";
+  el("#e_gia").value = p.GIA || "";
+  el("#e_note").value = p.GHI_CHU || "";
+  el("#e_apply_oem_price").value = "0";
+  el("#e_img").value = "";
+
+  setDetailEditable(false);
+  renderReplacements(p);
+
+  el("#btnAddToQuoteFromDetail").onclick = ()=>toggleQuote(pid);
+  el("#btnEditDetail").onclick = ()=>{
+    detailEditMode = !detailEditMode;
+    setDetailEditable(detailEditMode);
+    toast("info", detailEditMode ? "Đang ở chế độ sửa" : "Đã tắt chế độ sửa");
+  };
+  el("#btnSaveDetail").onclick = saveDetail;
+
+  openModal("#modalDetail");
+}
+
+function setDetailEditable(canEdit){
+  ["#e_oem","#e_alt","#e_ten","#e_brand","#e_loai","#e_dvt","#e_gia","#e_note"].forEach(id=>{
+    el(id).disabled = !canEdit;
+  });
+  el("#e_apply_oem_price").disabled = !canEdit;
+  el("#e_img").disabled = !canEdit;
+  el("#btnSaveDetail").disabled = !canEdit;
+}
+
+function parseAltList(s){
+  return String(s||"")
+    .split(/[,;\n]/)
+    .map(x=>x.trim())
+    .filter(Boolean);
+}
+
+function renderReplacements(p){
+  const box = el("#replList");
+  box.innerHTML = "";
+
+  const alts = parseAltList(p.OEM_THAY_THE
