@@ -1,20 +1,22 @@
-/************ YOU MUST SET THESE ************/
-const API_URL = "https://script.google.com/macros/s/AKfycbxOgMxgpBYs9DS1iphWMiLBEJ6PcmD3YXUO8gvOHGoKUsZpOjZBn8MYLo5edR8gAXhc/exec";
-const TOKEN   = "Thanhhai_Thaovy";
+/************ YOU MUST SET THIS ************/
+const API_URL = "https://script.google.com/macros/s/AKfycbzs-QjVvfzggUMVGbfr5qizvaI5bO8iqVyklNwHkF0YJeoPFKaSav7HRdPXOKqu1cgm/exec";
 /*******************************************/
 
+// token nhập trên app
+function getToken() { return (localStorage.getItem("PHU_TUNG_TOKEN") || "").trim(); }
+
 const UI = {
-  MAX_CATEGORIES: 10,         // không tra cứu: hiển thị tối đa 10 loại
-  MAX_ITEMS_PER_CATEGORY: 20  // không tra cứu: mỗi loại tối đa 20 sp (tượng trưng)
+  MAX_CATEGORIES: 10,
+  MAX_ITEMS_PER_CATEGORY: 20
 };
 
-let currentLoc = "KHO"; // KHO / CUA_HANG
+let currentLocView = "KHO"; // chỉ để VIEW (tab), còn Nhập/Xuất có chọn riêng
 let allProducts = [];
 let stockMap = {}; // product_id -> {KHO_TON, CUA_HANG_TON}
 let quoteCart = new Map(); // product_id -> {qty, price}
 let moveType = "IN";
 
-/************ JSONP helper ************/
+/************ JSONP ************/
 function jsonp(action, params = {}) {
   return new Promise((resolve, reject) => {
     const cb = "cb_" + Math.random().toString(16).slice(2);
@@ -22,18 +24,16 @@ function jsonp(action, params = {}) {
 
     const q = new URLSearchParams({
       action,
-      token: TOKEN,
+      token: getToken(),
       callback: cb,
       ...params
     });
 
     window[cb] = (resp) => {
-      try {
-        delete window[cb];
-        script.remove();
-        if (!resp || resp.ok !== true) return reject(resp?.error || "API_ERROR");
-        resolve(resp.data);
-      } catch (e) { reject(String(e)); }
+      delete window[cb];
+      script.remove();
+      if (!resp || resp.ok !== true) return reject(resp?.error || "API_ERROR");
+      resolve(resp.data);
     };
 
     script.onerror = () => {
@@ -50,31 +50,32 @@ function jsonp(action, params = {}) {
 function el(sel){ return document.querySelector(sel); }
 function els(sel){ return Array.from(document.querySelectorAll(sel)); }
 
-function money(n){
-  n = Number(n||0);
-  return n.toLocaleString("vi-VN");
-}
-
+function money(n){ return Number(n||0).toLocaleString("vi-VN"); }
 function openModal(id){ el(id).classList.add("show"); }
 function closeModal(id){ el(id).classList.remove("show"); }
+function show(elem, yes){ if(elem) elem.style.display = yes ? "" : "none"; }
 
-function show(elem, yes){
-  if(!elem) return;
-  elem.style.display = yes ? "" : "none";
-}
-
-/************ INIT ************/
 document.addEventListener("click", (e) => {
   const c = e.target.getAttribute("data-close");
   if (c) closeModal(c);
 });
 
-els(".tab-btn").forEach(btn => {
+// Header image fallback
+const headerTruck = document.querySelector("#headerTruck");
+headerTruck?.addEventListener("error", ()=> headerTruck.classList.add("hide"));
+
+/************ TABS (chỉ đổi VIEW) ************/
+els(".tab-btn[data-tab]").forEach(btn => {
   btn.addEventListener("click", async () => {
-    els(".tab-btn").forEach(b => b.classList.remove("active"));
+    els(".tab-btn[data-tab]").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
-    currentLoc = btn.dataset.tab;
-    el("#viewLoc").textContent = currentLoc;
+    currentLocView = btn.dataset.tab;
+    el("#viewLoc").textContent = currentLocView;
+
+    // set default location in movement modal theo tab đang xem
+    const locSel = el("#m_location");
+    if(locSel) locSel.value = currentLocView;
+
     await refreshAll();
   });
 });
@@ -86,10 +87,7 @@ el("#q").addEventListener("keydown", (e)=>{ if(e.key==="Enter") doSearch(); });
 el("#btnOpenAdd").addEventListener("click", ()=>openModal("#modalAdd"));
 el("#btnOpenIn").addEventListener("click", ()=>openMove("IN"));
 el("#btnOpenOut").addEventListener("click", ()=>openMove("OUT"));
-el("#btnQuote").addEventListener("click", ()=>{
-  renderQuoteModal();
-  openModal("#modalQuote");
-});
+el("#btnQuote").addEventListener("click", ()=>{ renderQuoteModal(); openModal("#modalQuote"); });
 
 el("#btnSaveProduct").addEventListener("click", saveProduct);
 el("#btnDoMove").addEventListener("click", doMove);
@@ -99,35 +97,50 @@ el("#btnClearQuote").addEventListener("click", ()=>{
   updateQuoteCount();
   renderQuoteModal();
 });
-
 el("#btnMakePdf").addEventListener("click", makePdfQuote);
 
-// Preview image before upload
+/************ TOKEN MODAL ************/
+el("#btnToken").addEventListener("click", ()=>{
+  el("#app_token").value = getToken();
+  openModal("#modalToken");
+});
+el("#btnSaveToken").addEventListener("click", ()=>{
+  const t = el("#app_token").value.trim();
+  if(!t) return alert("Token trống!");
+  localStorage.setItem("PHU_TUNG_TOKEN", t);
+  closeModal("#modalToken");
+  alert("Đã lưu token. Bấm 'Làm mới' để tải dữ liệu.");
+});
+
+/************ IMAGE PREVIEW ************/
 const imgInput = document.querySelector("#p_img");
 const imgPreview = document.querySelector("#p_img_preview");
 imgInput?.addEventListener("change", async () => {
   const f = imgInput.files?.[0];
-  if (!f) {
-    imgPreview.style.display = "none";
-    imgPreview.src = "";
-    return;
-  }
+  if (!f) { imgPreview.style.display="none"; imgPreview.src=""; return; }
   const url = await fileToDataURL(f);
   imgPreview.src = url;
   imgPreview.style.display = "block";
 });
 
-async function boot(){
+/************ BOOT ************/
+(async function boot(){
+  if(!getToken()){
+    openModal("#modalToken");
+    return;
+  }
   try{
     await jsonp("ping");
+    // set default movement location to current view
+    const locSel = el("#m_location");
+    if(locSel) locSel.value = currentLocView;
     await refreshAll();
   }catch(err){
-    alert("Không kết nối được API. Kiểm tra API_URL / TOKEN.\n" + err);
+    alert("Không kết nối được API hoặc TOKEN sai.\n" + err);
   }
-}
-boot();
+})();
 
-/************ LOAD + RENDER ************/
+/************ LOAD ************/
 async function refreshAll(){
   const [products, stock] = await Promise.all([
     jsonp("getProducts"),
@@ -137,30 +150,27 @@ async function refreshAll(){
   stockMap = {};
   (stock||[]).forEach(s => stockMap[String(s.PRODUCT_ID)] = s);
 
-  // Logic: trống -> trượt tượng trưng; có q -> ALL list
   const q = el("#q").value.trim();
   if(q) renderSearchResult(filterLocal(q));
   else renderDefault();
 }
 
+function getTon(productId){
+  const s = stockMap[String(productId)];
+  if(!s) return 0;
+  return currentLocView === "KHO" ? Number(s.KHO_TON||0) : Number(s.CUA_HANG_TON||0);
+}
+
+/************ RENDER MODE ************/
 function renderDefault(){
-  // không tra: trượt tượng trưng
   show(el("#categoryRows"), true);
   show(el("#listSection"), false);
   renderCategoryRows(allProducts);
 }
-
 function renderSearchResult(result){
-  // có tra: ALL danh sách dọc
   show(el("#categoryRows"), false);
   show(el("#listSection"), true);
   renderListAll(result);
-}
-
-function getTon(productId){
-  const s = stockMap[String(productId)];
-  if(!s) return 0;
-  return currentLoc === "KHO" ? Number(s.KHO_TON||0) : Number(s.CUA_HANG_TON||0);
 }
 
 function renderCategoryRows(list){
@@ -171,10 +181,7 @@ function renderCategoryRows(list){
     byCat.get(cat).push(p);
   });
 
-  // sort categories by count desc
   const cats = Array.from(byCat.entries()).sort((a,b)=>b[1].length - a[1].length);
-
-  // top N categories, rest gộp KHÁC
   const top = cats.slice(0, UI.MAX_CATEGORIES);
   const rest = cats.slice(UI.MAX_CATEGORIES);
 
@@ -222,7 +229,7 @@ function productCard(p){
 
   card.innerHTML = `
     <div class="prod-top">
-      <img class="prod-img" src="${img || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='rgba(255,255,255,0.06)'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' fill='rgba(255,255,255,0.45)' font-size='10'%3Eno%20img%3C/text%3E%3C/svg%3E"}" />
+      <img class="prod-img" src="${img || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='rgba(0,0,0,0.06)'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' fill='rgba(0,0,0,0.45)' font-size='10'%3Eno%20img%3C/text%3E%3C/svg%3E"}" />
       <div class="prod-meta">
         <div class="prod-oem">${escapeHtml(p.OEM || "")} <span class="muted">(#${pid})</span></div>
         <div class="prod-alt">OEM thay thế: <b>${escapeHtml(p.OEM_THAY_THE || "-")}</b></div>
@@ -231,21 +238,17 @@ function productCard(p){
     </div>
     <div class="prod-foot">
       <div>Loại: <b>${escapeHtml(p.LOAI || "-")}</b></div>
-      <div>Tồn: <b>${ton}</b></div>
+      <div>Tồn(${currentLocView}): <b>${ton}</b></div>
       <div>Giá: <b>${money(p.GIA)}đ</b></div>
     </div>
   `;
 
-  // Click: add/remove quote
   card.addEventListener("click", ()=>{
-    if(quoteCart.has(pid)){
-      quoteCart.delete(pid);
-    }else{
-      quoteCart.set(pid, { qty: 1, price: Number(p.GIA||0) });
-    }
+    if(quoteCart.has(pid)) quoteCart.delete(pid);
+    else quoteCart.set(pid, { qty: 1, price: Number(p.GIA||0) });
+
     updateQuoteCount();
 
-    // refresh current view state
     const q = el("#q").value.trim();
     if(q) renderSearchResult(filterLocal(q));
     else renderDefault();
@@ -259,18 +262,6 @@ function updateQuoteCount(){
 }
 
 /************ SEARCH ************/
-async function doSearch(){
-  const q = el("#q").value.trim();
-  if(!q){
-    renderDefault();
-    return;
-  }
-
-  // local filter (nhanh cho 1-5k sp). Muốn chuẩn server thì đổi sang jsonp("searchProducts",{q})
-  const result = filterLocal(q);
-  renderSearchResult(result);
-}
-
 function filterLocal(q){
   q = q.toLowerCase();
   return allProducts.filter(p=>{
@@ -280,6 +271,12 @@ function filterLocal(q){
     const loai = String(p.LOAI||"").toLowerCase();
     return oem.includes(q) || alt.includes(q) || ten.includes(q) || loai.includes(q);
   });
+}
+
+function doSearch(){
+  const q = el("#q").value.trim();
+  if(!q){ renderDefault(); return; }
+  renderSearchResult(filterLocal(q));
 }
 
 /************ ADD PRODUCT ************/
@@ -294,18 +291,15 @@ async function saveProduct(){
   const note = el("#p_note").value.trim();
   const file = el("#p_img").files[0];
 
-  if(!oem || !ten){
-    alert("Thiếu OEM hoặc TÊN");
-    return;
-  }
+  if(!oem || !ten) return alert("Thiếu OEM hoặc TÊN");
 
-  // 1) create product first to get ID
   const created = await jsonp("createProduct", {
-    oem, oem_thay_the: alt, ten, thuong_hieu: brand, loai, don_vi_tinh: dvt, gia, ghi_chu: note, image_url: ""
+    oem, oem_thay_the: alt, ten, thuong_hieu: brand,
+    loai, don_vi_tinh: dvt, gia, ghi_chu: note, image_url: ""
   });
+
   const productId = created.id;
 
-  // 2) upload image (optional)
   if(file){
     const dataUrl = await fileToDataURL(file);
     await jsonp("uploadImage", { product_id: productId, data_url: dataUrl });
@@ -320,8 +314,7 @@ async function saveProduct(){
 function clearAddForm(){
   ["#p_oem","#p_alt","#p_ten","#p_brand","#p_loai","#p_dvt","#p_gia","#p_note"].forEach(id=>el(id).value="");
   el("#p_img").value = "";
-  const pv = el("#p_img_preview");
-  if(pv){ pv.src=""; pv.style.display="none"; }
+  if(imgPreview){ imgPreview.src=""; imgPreview.style.display="none"; }
 }
 
 function fileToDataURL(file){
@@ -333,41 +326,51 @@ function fileToDataURL(file){
   });
 }
 
-/************ MOVEMENT ************/
+/************ MOVEMENT (OEM) ************/
 function openMove(type){
   moveType = type;
-  el("#moveTitle").textContent = (type==="IN" ? "Nhập hàng" : "Xuất hàng") + ` (${currentLoc})`;
-  el("#m_pid").value = "";
+  el("#moveTitle").textContent = (type==="IN" ? "Nhập hàng (theo OEM)" : "Xuất hàng (theo OEM)");
+  el("#m_oem").value = "";
   el("#m_qty").value = "";
-  el("#m_price").value = "";
+  el("#m_new_price").value = "";
   el("#m_note").value = "";
+
+  // default location = current view
+  el("#m_location").value = currentLocView;
+
+  // giá chỉ hiện khi nhập
+  show(el("#priceWrap"), type === "IN");
+
   openModal("#modalMove");
 }
 
 async function doMove(){
-  const productId = el("#m_pid").value.trim();
+  const location = el("#m_location").value.trim();
+  const oem = el("#m_oem").value.trim();
   const qty = el("#m_qty").value.trim();
-  const price = el("#m_price").value.trim();
+  const newPrice = el("#m_new_price").value.trim();
   const note = el("#m_note").value.trim();
 
-  if(!productId || !qty){
-    alert("Thiếu ID hoặc số lượng");
-    return;
-  }
+  if(!oem || !qty) return alert("Thiếu OEM hoặc số lượng");
 
   try{
-    const resp = await jsonp("createMovement", {
-      location: currentLoc,
+    const resp = await jsonp("createMovementByOEM", {
+      location,
       type: moveType,
-      product_id: productId,
+      oem,
       qty,
-      price_at_time: price,
+      new_price: (moveType==="IN" ? newPrice : ""), // OUT thì bỏ qua
       note
     });
 
     closeModal("#modalMove");
     await refreshAll();
-    alert(`OK: ${resp.ref_no}`);
+
+    if(resp.updated_price != null){
+      alert(`OK: ${resp.ref_no}\nĐã cập nhật GIÁ mới OEM=${resp.oem}: ${money(resp.updated_price)}đ`);
+    }else{
+      alert(`OK: ${resp.ref_no}`);
+    }
   }catch(e){
     alert("Lỗi nhập/xuất: " + e);
   }
@@ -434,10 +437,7 @@ function renderQuoteModal(){
 }
 
 async function makePdfQuote(){
-  if(quoteCart.size === 0){
-    alert("Chưa chọn sản phẩm");
-    return;
-  }
+  if(quoteCart.size === 0) return alert("Chưa chọn sản phẩm");
 
   const customer = el("#c_name").value.trim();
   const phone = el("#c_phone").value.trim();
