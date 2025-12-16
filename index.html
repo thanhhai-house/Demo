@@ -9,7 +9,8 @@
 <body>
   <header class="app-header">
     <div class="header-left">
-      <img class="truck" id="headerTruck" alt="truck" src="./assets/truck.png">
+      <img class="truck" id="headerTruck" alt="xe đầu kéo"
+        src="https://commons.wikimedia.org/wiki/Special:FilePath/Semi-trailer%20Truck.svg">
       <div>
         <div class="title">THỐNG KÊ PHỤ TÙNG</div>
         <div class="subtitle">Kho & Cửa hàng • Nhập/Xuất theo OEM • Báo giá PDF</div>
@@ -44,10 +45,8 @@
       <div class="muted">Không tra: trượt theo loại • Có tra: ALL danh sách</div>
     </section>
 
-    <!-- Không tra cứu => hiện -->
     <section id="categoryRows" class="category-rows"></section>
 
-    <!-- Có tra cứu => hiện -->
     <section class="list" id="listSection">
       <div class="list-head">
         <div class="muted">Kết quả tra cứu (ALL)</div>
@@ -57,23 +56,19 @@
     </section>
   </main>
 
-  <!-- MODAL: Token -->
+  <!-- TOKEN -->
   <div class="modal" id="modalToken">
     <div class="modal-card">
       <div class="modal-head">
         <div class="modal-title">Nhập TOKEN</div>
         <button class="icon-btn" data-close="#modalToken">✕</button>
       </div>
-
       <div class="grid">
         <label class="full">TOKEN
           <input id="app_token" placeholder="Dán token của bạn vào đây..." />
         </label>
-        <div class="full muted">
-          Token sẽ được lưu trên thiết bị (localStorage). Đổi máy thì nhập lại.
-        </div>
+        <div class="full muted">Token lưu trên thiết bị (localStorage). Đổi máy thì nhập lại.</div>
       </div>
-
       <div class="modal-actions">
         <button class="btn ghost" data-close="#modalToken">Hủy</button>
         <button class="btn" id="btnSaveToken">Lưu TOKEN</button>
@@ -81,7 +76,7 @@
     </div>
   </div>
 
-  <!-- MODAL: Add product -->
+  <!-- ADD PRODUCT -->
   <div class="modal" id="modalAdd">
     <div class="modal-card">
       <div class="modal-head">
@@ -99,6 +94,13 @@
         <label>GIÁ <input id="p_gia" inputmode="numeric" placeholder="VD: 120000"/></label>
         <label>GHI CHÚ <input id="p_note"/></label>
 
+        <label>Tồn ban đầu KHO
+          <input id="p_init_kho" inputmode="numeric" placeholder="VD: 10" />
+        </label>
+        <label>Tồn ban đầu CỬA HÀNG
+          <input id="p_init_store" inputmode="numeric" placeholder="VD: 0" />
+        </label>
+
         <label class="full">
           Ảnh (Camera/Điện thoại/PC)
           <input id="p_img" type="file" accept="image/*" capture="environment"/>
@@ -108,6 +110,7 @@
           <div class="muted">Xem trước ảnh:</div>
           <img id="p_img_preview" class="img-preview" alt="preview" />
         </div>
+
         <div class="full muted">* OEM thay thế có thể để trống và không bắt buộc ảnh</div>
       </div>
 
@@ -118,7 +121,7 @@
     </div>
   </div>
 
-  <!-- MODAL: Movement (OEM + QTY + optional NEW PRICE + choose location) -->
+  <!-- MOVEMENT -->
   <div class="modal" id="modalMove">
     <div class="modal-card">
       <div class="modal-head">
@@ -133,26 +136,19 @@
             <option value="CUA_HANG">CỬA HÀNG</option>
           </select>
         </label>
-
         <label>Mã OEM
           <input id="m_oem" placeholder="VD: 12345-ABC"/>
         </label>
-
         <label>Số lượng
           <input id="m_qty" inputmode="numeric" placeholder="VD: 2"/>
         </label>
-
         <label id="priceWrap">Cập nhật giá mới (chỉ khi NHẬP)
           <input id="m_new_price" inputmode="numeric" placeholder="Để trống = giữ giá cũ"/>
         </label>
-
         <label class="full">Ghi chú
           <input id="m_note" placeholder="VD: Nhập theo hoá đơn..."/>
         </label>
-
-        <div class="full muted">
-          * Nếu nhập giá mới: toàn bộ sản phẩm cùng OEM sẽ đổi giá kể từ lần cập nhật này.
-        </div>
+        <div class="full muted">* Nếu nhập giá mới: tất cả sản phẩm cùng OEM sẽ đổi giá kể từ lúc cập nhật.</div>
       </div>
 
       <div class="modal-actions">
@@ -162,7 +158,7 @@
     </div>
   </div>
 
-  <!-- MODAL: Quote -->
+  <!-- QUOTE -->
   <div class="modal" id="modalQuote">
     <div class="modal-card">
       <div class="modal-head">
@@ -195,6 +191,9 @@
       </div>
     </div>
   </footer>
+
+  <!-- TOAST -->
+  <div id="toastWrap" class="toast-wrap"></div>
 
   <script src="./app.js"></script>
 </body>
