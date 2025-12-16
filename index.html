@@ -9,8 +9,9 @@
 <body>
   <header class="app-header">
     <div class="header-left">
-      <img class="truck" id="headerTruck" alt="xe đầu kéo"
-        src="https://commons.wikimedia.org/wiki/Special:FilePath/Semi-trailer%20Truck.svg">
+      <!-- ẢNH Ô TÔ ĐẸP -->
+      <img class="truck" id="headerTruck" alt="ô tô đầu kéo"
+        src="https://images.unsplash.com/photo-1542362567-b07e54358753?auto=format&fit=crop&w=560&q=70">
       <div>
         <div class="title">THỐNG KÊ PHỤ TÙNG</div>
         <div class="subtitle">Kho & Cửa hàng • Nhập/Xuất theo OEM • Báo giá PDF</div>
@@ -87,19 +88,15 @@
       <div class="grid">
         <label>OEM <input id="p_oem"/></label>
         <label>OEM THAY THẾ <input id="p_alt"/></label>
-        <label>TÊN <input id="p_ten"/></label>
+        <label class="full">TÊN <input id="p_ten"/></label>
         <label>THƯƠNG HIỆU <input id="p_brand"/></label>
         <label>LOẠI <input id="p_loai" placeholder="VD: Lọc nhớt"/></label>
         <label>ĐƠN VỊ TÍNH <input id="p_dvt" placeholder="cái, lọ, bộ..."/></label>
         <label>GIÁ <input id="p_gia" inputmode="numeric" placeholder="VD: 120000"/></label>
         <label>GHI CHÚ <input id="p_note"/></label>
 
-        <label>Tồn ban đầu KHO
-          <input id="p_init_kho" inputmode="numeric" placeholder="VD: 10" />
-        </label>
-        <label>Tồn ban đầu CỬA HÀNG
-          <input id="p_init_store" inputmode="numeric" placeholder="VD: 0" />
-        </label>
+        <label>Tồn ban đầu KHO <input id="p_init_kho" inputmode="numeric" placeholder="VD: 10"/></label>
+        <label>Tồn ban đầu CỬA HÀNG <input id="p_init_store" inputmode="numeric" placeholder="VD: 0"/></label>
 
         <label class="full">
           Ảnh (Camera/Điện thoại/PC)
@@ -136,19 +133,13 @@
             <option value="CUA_HANG">CỬA HÀNG</option>
           </select>
         </label>
-        <label>Mã OEM
-          <input id="m_oem" placeholder="VD: 12345-ABC"/>
-        </label>
-        <label>Số lượng
-          <input id="m_qty" inputmode="numeric" placeholder="VD: 2"/>
-        </label>
+        <label>Mã OEM <input id="m_oem" placeholder="VD: 12345-ABC"/></label>
+        <label>Số lượng <input id="m_qty" inputmode="numeric" placeholder="VD: 2"/></label>
         <label id="priceWrap">Cập nhật giá mới (chỉ khi NHẬP)
           <input id="m_new_price" inputmode="numeric" placeholder="Để trống = giữ giá cũ"/>
         </label>
-        <label class="full">Ghi chú
-          <input id="m_note" placeholder="VD: Nhập theo hoá đơn..."/>
-        </label>
-        <div class="full muted">* Nếu nhập giá mới: tất cả sản phẩm cùng OEM sẽ đổi giá kể từ lúc cập nhật.</div>
+        <label class="full">Ghi chú <input id="m_note" placeholder="VD: Nhập theo hoá đơn..."/></label>
+        <div class="full muted">* Nếu nhập giá mới: tất cả sản phẩm cùng OEM sẽ đổi giá.</div>
       </div>
 
       <div class="modal-actions">
@@ -183,6 +174,75 @@
     </div>
   </div>
 
+  <!-- PRODUCT DETAIL -->
+  <div class="modal" id="modalDetail">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-title">Chi tiết sản phẩm</div>
+        <button class="icon-btn" data-close="#modalDetail">✕</button>
+      </div>
+
+      <div class="detail-top">
+        <img id="d_img" class="detail-img" alt="image"/>
+        <div class="detail-info">
+          <div class="detail-oem">
+            <span id="d_oem"></span>
+            <span class="muted">(#<span id="d_id"></span>)</span>
+          </div>
+          <div class="muted">OEM thay thế: <b id="d_alt"></b></div>
+          <div class="detail-name" id="d_ten"></div>
+          <div class="detail-meta">
+            <div>Loại: <b id="d_loai"></b></div>
+            <div>Thương hiệu: <b id="d_brand"></b></div>
+            <div>ĐVT: <b id="d_dvt"></b></div>
+            <div>Giá: <b id="d_gia"></b></div>
+          </div>
+          <div class="detail-stock">
+            <div class="pill">Tồn KHO: <b id="d_ton_kho">0</b></div>
+            <div class="pill">Tồn CỬA HÀNG: <b id="d_ton_store">0</b></div>
+          </div>
+        </div>
+      </div>
+
+      <hr class="sep"/>
+
+      <div class="grid">
+        <label>OEM <input id="e_oem" disabled /></label>
+        <label>OEM THAY THẾ <input id="e_alt" disabled /></label>
+        <label class="full">TÊN <input id="e_ten" disabled /></label>
+        <label>THƯƠNG HIỆU <input id="e_brand" disabled /></label>
+        <label>LOẠI <input id="e_loai" disabled /></label>
+        <label>ĐVT <input id="e_dvt" disabled /></label>
+
+        <label>GIÁ <input id="e_gia" inputmode="numeric" disabled /></label>
+        <label>Áp giá theo OEM (đổi tất cả cùng OEM)
+          <select id="e_apply_oem_price" class="select" disabled>
+            <option value="0">Không</option>
+            <option value="1">Có</option>
+          </select>
+        </label>
+
+        <label class="full">GHI CHÚ <input id="e_note" disabled /></label>
+
+        <label class="full">Đổi ảnh
+          <input id="e_img" type="file" accept="image/*" capture="environment" disabled />
+        </label>
+        <div class="full muted">* Bấm “Sửa” để cho phép chỉnh.</div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn ghost" id="btnAddToQuoteFromDetail">+ Thêm vào báo giá</button>
+        <button class="btn" id="btnEditDetail">Sửa</button>
+        <button class="btn" id="btnSaveDetail" disabled>Lưu cập nhật</button>
+      </div>
+
+      <div class="repl">
+        <div class="repl-title">Sản phẩm thay thế / liên quan</div>
+        <div class="repl-list" id="replList"></div>
+      </div>
+    </div>
+  </div>
+
   <footer class="app-footer">
     <div class="marquee">
       <div class="marquee__inner">
@@ -192,7 +252,6 @@
     </div>
   </footer>
 
-  <!-- TOAST -->
   <div id="toastWrap" class="toast-wrap"></div>
 
   <script src="./app.js"></script>
